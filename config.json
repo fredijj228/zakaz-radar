@@ -63,7 +63,7 @@
   ],
   "chat_messages": 60,
 
-  "kwork": { "enabled": false, "categories": [11, 41], "pages": 2 },
+  "kwork": { "enabled": true, "categories": [41], "pages": 3 },
 
   "rss_feeds": [
     { "name": "FL.ru", "url": "https://www.fl.ru/rss/all.xml" }
