@@ -29,7 +29,14 @@
     "проджект", "тестировщик", "qa!", "стаж*", "логотип*", "реклам*"
   ],
 
+  "ignore_lines": [
+    "контакт заказчика", "откликнуться", "разместить заказ", "разместить вакансию",
+    "подписывайся", "подпишись", "наш чат", "реклама:", "по вопросам рекламы"
+  ],
+
   "telegram_channels": [
+    "zakazy_dlya_frilanserov",
+    "tgram_jobs",
     "job_for_bots",
     "it_zakazy",
     "freegolup",
@@ -40,7 +47,7 @@
     "javascript_jobs_feed"
   ],
 
-  "kwork": { "enabled": true, "categories": [11], "pages": 2 },
+  "kwork": { "enabled": false, "categories": [11, 41], "pages": 2 },
 
   "rss_feeds": [
     { "name": "FL.ru", "url": "https://www.fl.ru/rss/all.xml" }
