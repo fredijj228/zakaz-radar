@@ -49,6 +49,20 @@
     "javascript_jobs_feed"
   ],
 
+  "telegram_chats": [
+    "freelance_birzha",
+    "freelance_chat_ru",
+    "freelance_vakansiii",
+    "freelance_in_telegram",
+    "profiwork",
+    "workyourass",
+    "tgwork",
+    "frilans_chat",
+    "freelance_chat",
+    "botoid"
+  ],
+  "chat_messages": 60,
+
   "kwork": { "enabled": false, "categories": [11, 41], "pages": 2 },
 
   "rss_feeds": [
