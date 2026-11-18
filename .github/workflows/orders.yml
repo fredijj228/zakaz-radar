@@ -1,0 +1,33 @@
+name: Радар заказов
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # каждые 10 минут (GitHub иногда запускает с опозданием)
+  workflow_dispatch:          # кнопка «Run workflow» для ручного запуска
+
+permissions:
+  contents: write             # чтобы сохранять seen.json (какие заказы уже отправлены)
+
+concurrency:
+  group: orders-radar
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверить заказы
+        run: python3 bot.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      - name: Запомнить отправленные
+        run: |
+          git config user.name "zakaz-radar"
+          git config user.email "zakaz-radar@users.noreply.github.com"
+          git add seen.json
+          git diff --cached --quiet || (git commit -m "seen [skip ci]" && git pull --rebase && git push)
