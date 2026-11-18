@@ -4,7 +4,8 @@
 
 Что делает за один запуск:
   1. Читает источники: публичные Telegram-каналы (t.me/s/<канал>),
-     биржу Kwork и RSS бирж (FL.ru).
+     Telegram-чаты фрилансеров (через твой аккаунт), RSS бирж (FL.ru)
+     и, если включить, биржу Kwork.
   2. Оставляет только заказы по твоей теме, выкидывает вакансии SMM,
      резюме и спам.
   3. Определяет тип заказа (бот / mini app / сайт / парсер / ИИ) и бюджет.
@@ -149,6 +150,74 @@ def get_tg_channel(channel):
     channel = channel.lstrip("@").strip()
     raw = fetch(f"https://t.me/s/{channel}")
     return parse_tg_channel(raw.decode("utf-8", errors="replace"), channel)
+
+
+# ──────────────── Telegram-чаты (через твой аккаунт) ────────────────
+# Нужны секреты TG_API_ID, TG_API_HASH, TG_SESSION (их даёт login.py)
+# и библиотека telethon (в GitHub Actions ставится автоматически).
+
+def chat_message_to_order(chat, msg):
+    """Сообщение из чата → заказ. chat — юзернейм чата без @."""
+    text = clean_text(getattr(msg, "message", None) or "")
+    if len(text) < 25:
+        return None
+    sender = getattr(msg, "sender", None)
+    if sender is not None and getattr(sender, "bot", False):
+        return None
+    contact = None
+    username = getattr(sender, "username", None) if sender is not None else None
+    if username:
+        contact = f"https://t.me/{username}"
+    else:
+        contact = find_contact(text, [], chat)
+    date = getattr(msg, "date", None)
+    return {
+        "id": f"chat:{chat}/{msg.id}",
+        "title": first_line(text),
+        "text": text,
+        "url": f"https://t.me/{chat}/{msg.id}",
+        "source": "@" + chat,
+        "contact": contact,
+        "date": iso(date) if date else None,
+        "budget": None,
+        "offers": None,
+    }
+
+
+def get_tg_chats(chats, limit):
+    api_id = os.environ.get("TG_API_ID", "").strip()
+    api_hash = os.environ.get("TG_API_HASH", "").strip()
+    session = os.environ.get("TG_SESSION", "").strip()
+    if not (api_id and api_hash and session):
+        s = load_json(SECRETS_FILE, {})
+        api_id = api_id or str(s.get("tg_api_id", "")).strip()
+        api_hash = api_hash or str(s.get("tg_api_hash", "")).strip()
+        session = session or str(s.get("tg_session", "")).strip()
+    if not (api_id and api_hash and session):
+        raise RuntimeError("нет входа в аккаунт (TG_API_ID / TG_API_HASH / TG_SESSION)")
+    from telethon.sync import TelegramClient
+    from telethon.sessions import StringSession
+
+    results = {}
+    client = TelegramClient(StringSession(session), int(api_id), api_hash,
+                            device_model="Zakaz Radar", system_version="GitHub Actions",
+                            app_version="1.0", lang_code="ru", system_lang_code="ru")
+    client.flood_sleep_threshold = 30
+    client.connect()
+    try:
+        if not client.is_user_authorized():
+            raise RuntimeError("вход в аккаунт сброшен — запусти login заново")
+        for chat in chats:
+            chat = chat.lstrip("@").strip()
+            try:
+                msgs = client.get_messages(chat, limit=limit)
+                results[chat] = [o for o in (chat_message_to_order(chat, m) for m in msgs) if o]
+                results[chat].reverse()
+            except Exception as ex:
+                results[chat] = ex
+    finally:
+        client.disconnect()
+    return results
 
 
 # ─────────────────────────── Kwork ───────────────────────────
@@ -499,6 +568,23 @@ def collect(cfg):
 
     for ch in cfg.get("telegram_channels", []):
         run("@" + ch.lstrip("@"), lambda ch=ch: get_tg_channel(ch))
+    chats = cfg.get("telegram_chats", [])
+    if chats:
+        try:
+            got = get_tg_chats(chats, int(cfg.get("chat_messages", 60)))
+            for chat, res in got.items():
+                name = "@" + chat
+                if isinstance(res, Exception):
+                    print(f"  ✗ {name}: {res}")
+                    report.append({"name": name, "ok": False, "count": 0})
+                else:
+                    print(f"  ✓ {name}: {len(res)}")
+                    report.append({"name": name, "ok": True, "count": len(res)})
+                    orders.extend(res)
+        except Exception as ex:
+            print(f"  ✗ чаты: {ex}")
+            for chat in chats:
+                report.append({"name": "@" + chat.lstrip("@"), "ok": False, "count": 0})
     if cfg.get("kwork", {}).get("enabled", False):
         run("Kwork", lambda: get_kwork(cfg.get("kwork", {})))
     for feed in cfg.get("rss_feeds", []):
