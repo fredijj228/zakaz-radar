@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#000000">
+<title>Радар заказов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --black: #000;
+    --white: #fff;
+    --ink-2: #9a9a9a;      /* второстепенный текст на чёрном */
+    --ink-3: #5c5c5c;      /* третий план */
+    --line: #232323;       /* разделители на чёрном */
+    --surface: #161616;    /* поля и чипы на чёрном */
+    --paper-2: #6b6b6b;    /* второстепенный текст на белом */
+    --paper-line: #e6e6e6;
+    --display: "Unbounded", "Golos Text", system-ui, sans-serif;
+    --text: "Golos Text", -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+    --top: max(env(safe-area-inset-top), var(--tg-content-safe-area-inset-top, 0px));
+    --bottom: env(safe-area-inset-bottom);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--black); color: var(--white); }
+  body {
+    font: 400 15px/1.45 var(--text);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding-bottom: calc(32px + var(--bottom));
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
+  .open :focus-visible { outline-color: var(--black); }
+
+  /* ── шапка ── */
+  .top {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--black);
+    padding: calc(14px + var(--top)) 18px 10px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .radar { width: 34px; height: 34px; flex: none; }
+  .radar .sweep { transform-origin: 17px 17px; }
+  .scanning .radar .sweep { animation: sweep 1.1s linear infinite; }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  h1 {
+    margin: 0; font: 700 26px/1 var(--display); letter-spacing: -0.02em;
+  }
+  .refresh {
+    margin-left: auto; width: 40px; height: 40px; border-radius: 50%;
+    display: grid; place-items: center; background: var(--surface);
+  }
+  .refresh svg { width: 18px; height: 18px; }
+  .status { margin: 8px 0 0 46px; color: var(--ink-2); font-size: 13px; min-height: 19px; }
+
+  .search {
+    display: block; margin-top: 14px; position: relative;
+  }
+  .search input {
+    width: 100%; height: 44px; border-radius: 14px; border: 0;
+    background: var(--surface); color: var(--white);
+    font: 400 16px var(--text); padding: 0 40px 0 42px;
+    appearance: none; -webkit-appearance: none;
+  }
+  .search input::placeholder { color: var(--ink-3); }
+  .search input:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--white); }
+  .search .icon { position: absolute; left: 14px; top: 13px; width: 18px; height: 18px; color: var(--ink-3); }
+  .search .clear {
+    position: absolute; right: 6px; top: 6px; width: 32px; height: 32px; border-radius: 50%;
+    color: var(--ink-2); display: none; place-items: center;
+  }
+  .search.has .clear { display: grid; }
+
+  .chips {
+    display: flex; gap: 8px; overflow-x: auto; margin: 12px -18px 0; padding: 0 18px 2px;
+    scrollbar-width: none;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none; height: 34px; padding: 0 14px; border-radius: 999px;
+    background: var(--surface); color: var(--white); font-weight: 500; font-size: 14px;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background .15s, color .15s;
+  }
+  .chip .n { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .chip[aria-pressed="true"] { background: var(--white); color: var(--black); }
+  .chip[aria-pressed="true"] .n { color: var(--paper-2); }
+
+  .tools { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .seg { display: inline-flex; background: var(--surface); border-radius: 999px; padding: 3px; }
+  .seg button { height: 28px; padding: 0 12px; border-radius: 999px; font-size: 13px; color: var(--ink-2); }
+  .seg button[aria-pressed="true"] { background: var(--black); color: var(--white); }
+  .toggle { height: 34px; padding: 0 12px; border-radius: 999px; font-size: 13px; color: var(--ink-2);
+            box-shadow: inset 0 0 0 1px var(--line); }
+  .toggle[aria-pressed="true"] { color: var(--white); box-shadow: inset 0 0 0 1px var(--white); }
+
+  /* ── лента ── */
+  .list { list-style: none; margin: 4px 0 0; padding: 0; }
+  .item { border-top: 1px solid var(--line); }
+  .item:first-child { border-top-color: transparent; }
+  .item.open, .item.open + .item { border-top-color: transparent; }
+  .row {
+    display: block; width: 100%; text-align: left; padding: 16px 18px 15px;
+  }
+  .meta { display: flex; align-items: baseline; gap: 10px; font-size: 13px; color: var(--ink-2); }
+  .meta .src { color: var(--white); font-weight: 500; }
+  .meta .new { width: 7px; height: 7px; border-radius: 50%; background: var(--white); align-self: center; flex: none; }
+  .price {
+    margin-left: auto; font: 700 17px/1 var(--display); color: var(--white);
+    letter-spacing: -0.01em; white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .price.none { font: 400 13px var(--text); color: var(--ink-3); letter-spacing: 0; }
+  .title {
+    margin: 7px 0 0; font-size: 16px; font-weight: 500; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .tag {
+    font-size: 12px; line-height: 1; padding: 6px 9px; border-radius: 8px;
+    box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2);
+  }
+  .tag.cat { color: var(--white); box-shadow: inset 0 0 0 1px #3a3a3a; }
+  .item.hot .tag.offers { color: var(--white); }
+
+  /* раскрытый заказ — инверсия */
+  .item.open {
+    margin: 6px 10px; background: var(--white); color: var(--black); border-radius: 22px;
+  }
+  .item.open .row { padding: 18px 18px 6px; }
+  .item.open .meta, .item.open .price.none { color: var(--paper-2); }
+  .item.open .meta .src, .item.open .price { color: var(--black); }
+  .item.open .meta .new { background: var(--black); }
+  .item.open .title { -webkit-line-clamp: unset; font-size: 18px; font-weight: 600; }
+  .item.open .tag { box-shadow: inset 0 0 0 1px var(--paper-line); color: var(--paper-2); }
+  .item.open .tag.cat { color: var(--black); box-shadow: inset 0 0 0 1px #c8c8c8; }
+  .body { display: none; padding: 0 18px 18px; }
+  .item.open .body { display: block; animation: reveal .22s ease-out; }
+  @keyframes reveal { from { opacity: 0; transform: translateY(-4px); } }
+  .desc {
+    white-space: pre-wrap; word-wrap: break-word; font-size: 15px; line-height: 1.55;
+    color: #1d1d1d; margin: 12px 0 0; max-height: 46vh; overflow: auto;
+  }
+  .hint { margin: 12px 0 0; font-size: 13px; color: var(--paper-2); }
+  .actions { display: flex; gap: 8px; margin-top: 16px; }
+  .btn {
+    height: 48px; border-radius: 14px; padding: 0 18px; font-weight: 600; font-size: 15px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+  }
+  .btn.primary { flex: 1; background: var(--black); color: var(--white); }
+  .btn.secondary { flex: 1; box-shadow: inset 0 0 0 1.5px var(--black); }
+  .btn.icon { width: 48px; padding: 0; box-shadow: inset 0 0 0 1.5px var(--paper-line); }
+  .btn.icon svg { width: 20px; height: 20px; }
+  .btn.icon[aria-pressed="true"] { background: var(--black); color: var(--white); box-shadow: none; }
+
+  /* пустые состояния */
+  .empty { padding: 56px 28px; text-align: center; color: var(--ink-2); }
+  .empty b { display: block; color: var(--white); font: 500 17px/1.3 var(--display); margin-bottom: 8px; }
+  .empty button { margin-top: 18px; height: 40px; padding: 0 18px; border-radius: 999px; background: var(--white); color: var(--black); font-weight: 600; }
+
+  .sources { margin: 28px 18px 0; color: var(--ink-3); font-size: 12px; line-height: 1.6; }
+  .sources summary { cursor: pointer; color: var(--ink-2); font-size: 13px; list-style: none; }
+  .sources summary::-webkit-details-marker { display: none; }
+  .sources ul { list-style: none; padding: 8px 0 0; margin: 0; columns: 2; }
+  .sources .bad { text-decoration: line-through; }
+  .sign { margin: 18px 18px 0; color: var(--ink-3); font-size: 12px; }
+
+  .skeleton .row { pointer-events: none; }
+  .skeleton .bar { height: 12px; border-radius: 6px; background: var(--surface); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scanning .radar .sweep { animation: none; }
+    .item.open .body { animation: none; }
+  }
+  @media (min-width: 640px) {
+    .wrap { max-width: 620px; margin: 0 auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top" id="top">
+    <div class="brand">
+      <svg class="radar" viewBox="0 0 34 34" aria-hidden="true">
+        <circle cx="17" cy="17" r="15.5" fill="none" stroke="#fff" stroke-width="1.5"/>
+        <circle cx="17" cy="17" r="9" fill="none" stroke="#5c5c5c" stroke-width="1"/>
+        <g class="sweep">
+          <path d="M17 17 L17 1.5 A15.5 15.5 0 0 1 30.4 9.3 Z" fill="#fff" opacity=".28"/>
+          <line x1="17" y1="17" x2="17" y2="1.5" stroke="#fff" stroke-width="1.5"/>
+        </g>
+        <circle cx="17" cy="17" r="2" fill="#fff"/>
+      </svg>
+      <h1>Радар</h1>
+      <button class="refresh" id="refresh" aria-label="Обновить заказы">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      </button>
+    </div>
+    <p class="status" id="status" aria-live="polite">Загружаю заказы…</p>
+
+    <label class="search" id="searchBox">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Поиск: бот для записи, Tilda, Kwork…" autocomplete="off" enterkeyhint="search" aria-label="Поиск по заказам">
+      <button type="button" class="clear" id="clear" aria-label="Очистить поиск">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </label>
+
+    <nav class="chips" id="chips" aria-label="Тип заказа"></nav>
+
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Сортировка">
+        <button data-sort="new" aria-pressed="true">Новые</button>
+        <button data-sort="price" aria-pressed="false">Дороже</button>
+      </div>
+      <button class="toggle" id="budgetOnly" aria-pressed="false">С бюджетом</button>
+    </div>
+  </header>
+
+  <main>
+    <ul class="list" id="list"></ul>
+    <details class="sources" id="sources" hidden>
+      <summary>Откуда заказы</summary>
+      <ul id="sourcesList"></ul>
+    </details>
+    <p class="sign">by Artemiy Romanchenko</p>
+  </main>
+</div>
+
+<script>
+(() => {
+  const DATA_URL = "https://raw.githubusercontent.com/fredijj228/zakaz-radar/main/orders.json";
+  const CATS = [
+    { id: "all", label: "Все" },
+    { id: "bot", label: "Боты" },
+    { id: "miniapp", label: "Mini App" },
+    { id: "site", label: "Сайты" },
+    { id: "parser", label: "Парсеры" },
+    { id: "ai", label: "ИИ" },
+    { id: "fav", label: "Избранное" },
+    { id: "hidden", label: "Скрытые" },
+  ];
+  const CAT_TAG = { bot: "Бот", miniapp: "Mini App", site: "Сайт", parser: "Парсер", ai: "ИИ" };
+
+  const tg = window.Telegram && window.Telegram.WebApp;
+  const inTg = !!(tg && tg.initData);
+  try {
+    tg.ready(); tg.expand();
+    tg.setHeaderColor("#000000"); tg.setBackgroundColor("#000000");
+    if (tg.setBottomBarColor) tg.setBottomBarColor("#000000");
+    if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+  } catch (e) {}
+  const haptic = (kind) => { try {
+    if (kind === "select") tg.HapticFeedback.selectionChanged();
+    else tg.HapticFeedback.impactOccurred(kind || "light");
+  } catch (e) {} };
+
+  // ── хранилище: облако Telegram → localStorage → память ──
+  const mem = {};
+  const cloud = inTg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast("6.9") ? tg.CloudStorage : null;
+  const store = {
+    get(key) {
+      return new Promise((res) => {
+        const local = () => { try { res(localStorage.getItem(key) ?? mem[key] ?? null); } catch (e) { res(mem[key] ?? null); } };
+        if (!cloud) return local();
+        try { cloud.getItem(key, (err, v) => err ? local() : res(v || null)); } catch (e) { local(); }
+      });
+    },
+    set(key, value) {
+      mem[key] = value;
+      try { localStorage.setItem(key, value); } catch (e) {}
+      if (cloud) { try { cloud.setItem(key, value); } catch (e) {} }
+    },
+  };
+
+  const state = {
+    orders: [], updated: null, sources: [],
+    cat: "all", sort: "new", budgetOnly: false, q: "",
+    fav: new Set(), hidden: new Set(), lastVisit: 0, open: null,
+    loading: false, error: false,
+  };
+
+  // ── помощники ──
+  const $ = (id) => document.getElementById(id);
+  function h(tag, attrs, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v == null || v === false) continue;
+      if (k === "class") el.className = v;
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
+    return el;
+  }
+  const plural = (n, one, few, many) => {
+    const a = n % 10, b = n % 100;
+    return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many;
+  };
+  const money = (v) => v.toLocaleString("ru-RU").replace(/ /g, " ") + " ₽";
+  function ago(iso) {
+    if (!iso) return "";
+    const s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 90) return "только что";
+    const m = Math.round(s / 60);
+    if (m < 60) return m + " мин назад";
+    const hh = Math.round(m / 60);
+    if (hh < 24) return hh + " ч назад";
+    const d = Math.round(hh / 24);
+    return d === 1 ? "вчера" : d + " " + plural(d, "день", "дня", "дней") + " назад";
+  }
+  const when = (o) => o.date || o.found;
+
+  function openLink(url) {
+    if (!url) return;
+    haptic("light");
+    try {
+      if (/^https?:\/\/t\.me\//i.test(url) && tg && tg.openTelegramLink && inTg) return tg.openTelegramLink(url);
+      if (tg && tg.openLink && inTg) return tg.openLink(url);
+    } catch (e) {}
+    window.open(url, "_blank", "noopener");
+  }
+
+  // ── фильтрация ──
+  function visible() {
+    const q = state.q.trim().toLowerCase();
+    let list = state.orders.filter((o) => {
+      if (state.cat === "hidden") return state.hidden.has(o.key);
+      if (state.hidden.has(o.key)) return false;
+      if (state.cat === "fav") return state.fav.has(o.key);
+      if (state.cat !== "all" && !(o.cats || []).includes(state.cat)) return false;
+      return true;
+    });
+    if (state.budgetOnly) list = list.filter((o) => o.budget);
+    if (q) {
+      const words = q.split(/\s+/);
+      list = list.filter((o) => {
+        const hay = (o.title + " " + o.text + " " + o.source).toLowerCase();
+        return words.every((w) => hay.includes(w));
+      });
+    }
+    if (state.sort === "price") list = [...list].sort((a, b) => (b.budget || 0) - (a.budget || 0));
+    return list;
+  }
+
+  function count(cat) {
+    return state.orders.filter((o) =>
+      cat === "hidden" ? state.hidden.has(o.key)
+      : !state.hidden.has(o.key) && (cat === "all" || (cat === "fav" ? state.fav.has(o.key) : (o.cats || []).includes(cat)))
+    ).length;
+  }
+
+  // ── отрисовка ──
+  function renderChips() {
+    const box = $("chips");
+    box.replaceChildren(...CATS.map((c) => {
+      const n = count(c.id);
+      if ((c.id === "fav" || c.id === "hidden") && !n && state.cat !== c.id) return null;
+      return h("button", {
+        class: "chip", "aria-pressed": String(state.cat === c.id),
+        onclick: () => { state.cat = c.id; state.open = null; haptic("select"); render(); },
+      }, c.label, state.orders.length ? h("span", { class: "n" }, String(n)) : null);
+    }).filter(Boolean));
+  }
+
+  const ICON = {
+    star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>',
+    starOn: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>',
+    hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7-.4 1-1.3 2.4-2.6 3.7M6.6 6.6C4.4 8 2.9 10.2 2 12c1 2.5 5 7 10 7 1.9 0 3.6-.6 5-1.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
+    show: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12c1-2.5 5-7 10-7s9 4.5 10 7c-1 2.5-5 7-10 7S3 14.5 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  };
+  const svg = (s) => { const t = document.createElement("template"); t.innerHTML = s; return t.content.firstChild; };
+
+  function item(o) {
+    const open = state.open === o.key;
+    const isNew = state.lastVisit && new Date(o.found).getTime() > state.lastVisit;
+    const fav = state.fav.has(o.key), hidden = state.hidden.has(o.key);
+    const tags = [
+      ...(o.cats || []).map((c) => CAT_TAG[c] && h("span", { class: "tag cat" }, CAT_TAG[c])),
+      o.offers != null ? h("span", { class: "tag offers" },
+        o.offers === 0 ? "Ещё нет откликов" : o.offers + " " + plural(o.offers, "отклик", "отклика", "откликов")) : null,
+    ].filter(Boolean);
+
+    let desc = o.text || "";
+    if (desc.startsWith(o.title)) desc = desc.slice(o.title.length).trim();
+
+    const li = h("li", { class: "item" + (open ? " open" : "") + (o.offers != null && o.offers <= 2 ? " hot" : "") },
+      h("button", {
+        class: "row", "aria-expanded": String(open),
+        onclick: () => { state.open = open ? null : o.key; haptic(open ? "soft" : "light"); render(); if (!open) requestAnimationFrame(() => {
+          const el = document.querySelector(".item.open"); if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); }); },
+      },
+        h("div", { class: "meta" },
+          isNew ? h("span", { class: "new", title: "Новый с прошлого визита" }) : null,
+          h("span", { class: "src" }, o.source),
+          h("span", null, ago(when(o))),
+          o.budget ? h("span", { class: "price" }, money(o.budget)) : h("span", { class: "price none" }, "цена договорная"),
+        ),
+        h("p", { class: "title" }, o.title),
+        tags.length ? h("div", { class: "tags" }, tags) : null,
+      ),
+      open ? h("div", { class: "body" },
+        desc ? h("p", { class: "desc" }, desc) : null,
+        o.source === "Kwork" ? h("p", { class: "hint" }, "Откликнуться можно на Kwork, контакты заказчика там же.")
+          : o.source === "FL.ru" ? h("p", { class: "hint" }, "Откликнуться можно на FL.ru.") : null,
+        h("div", { class: "actions" },
+          o.url ? h("button", { class: "btn primary", onclick: () => openLink(o.url) }, o.contact ? "Открыть" : "Открыть заказ") : null,
+          o.contact ? h("button", { class: "btn secondary", onclick: () => openLink(o.contact) }, "Написать") : null,
+          h("button", {
+            class: "btn icon", "aria-pressed": String(fav), "aria-label": fav ? "Убрать из избранного" : "В избранное",
+            onclick: () => { toggle("fav", o.key); haptic("light"); render(); },
+          }, svg(fav ? ICON.starOn : ICON.star)),
+          h("button", {
+            class: "btn icon", "aria-label": hidden ? "Вернуть в ленту" : "Скрыть заказ",
+            onclick: () => { toggle("hidden", o.key); state.open = null; haptic("medium"); render(); },
+          }, svg(hidden ? ICON.show : ICON.hide)),
+        ),
+      ) : null,
+    );
+    return li;
+  }
+
+  function toggle(name, key) {
+    const set = state[name];
+    set.has(key) ? set.delete(key) : set.add(key);
+    // храним только ключи заказов, которые ещё есть в ленте
+    const alive = new Set(state.orders.map((o) => o.key));
+    store.set(name, JSON.stringify([...set].filter((k) => alive.has(k)).slice(-300)));
+  }
+
+  function renderList() {
+    const list = $("list");
+    if (state.loading && !state.orders.length) {
+      list.replaceChildren(...Array.from({ length: 6 }, () => h("li", { class: "item skeleton" },
+        h("div", { class: "row" }, h("div", { class: "bar", style: "width:38%" }),
+          h("div", { class: "bar", style: "width:86%;margin-top:12px;height:15px" }),
+          h("div", { class: "bar", style: "width:60%;margin-top:8px;height:15px" })))));
+      return;
+    }
+    if (state.error && !state.orders.length) {
+      list.replaceChildren(h("li", { class: "empty" },
+        h("b", null, "Не получилось загрузить заказы"),
+        "Проверь интернет и обнови ленту.",
+        h("br"), h("button", { onclick: load }, "Обновить")));
+      return;
+    }
+    const items = visible();
+    if (!items.length) {
+      const msg = state.cat === "fav" ? ["В избранном пусто", "Открой заказ и нажми звёздочку, чтобы сохранить его сюда."]
+        : state.cat === "hidden" ? ["Скрытых заказов нет", "Скрытые заказы появятся здесь, их можно вернуть в ленту."]
+        : state.q ? ["Ничего не нашлось", "Попробуй другое слово или сбрось фильтры."]
+        : ["Пока пусто", "Новые заказы появятся здесь, радар проверяет биржи каждые 5 минут."];
+      list.replaceChildren(h("li", { class: "empty" }, h("b", null, msg[0]), msg[1],
+        (state.q || state.cat !== "all" || state.budgetOnly) ? h("br") : null,
+        (state.q || state.cat !== "all" || state.budgetOnly) ? h("button", { onclick: resetFilters }, "Сбросить фильтры") : null));
+      return;
+    }
+    list.replaceChildren(...items.map(item));
+  }
+
+  function renderStatus() {
+    const n = state.orders.filter((o) => !state.hidden.has(o.key)).length;
+    const fresh = state.lastVisit ? state.orders.filter((o) => new Date(o.found).getTime() > state.lastVisit).length : 0;
+    let s = state.loading && !state.orders.length ? "Загружаю заказы…"
+      : n + " " + plural(n, "заказ", "заказа", "заказов");
+    if (fresh) s += ", " + fresh + " " + plural(fresh, "новый", "новых", "новых");
+    if (state.updated && state.orders.length) s += ", обновлено " + ago(state.updated);
+    $("status").textContent = s;
+    $("top").classList.toggle("scanning", state.loading);
+  }
+
+  function renderSources() {
+    if (!state.sources.length) return;
+    $("sources").hidden = false;
+    $("sourcesList").replaceChildren(...state.sources.map((s) =>
+      h("li", { class: s.ok ? "" : "bad" }, s.name + (s.ok ? " " + s.count : " не ответил"))));
+  }
+
+  function render() {
+    renderStatus(); renderChips(); renderList(); renderSources();
+    document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.sort === state.sort)));
+    $("budgetOnly").setAttribute("aria-pressed", String(state.budgetOnly));
+  }
+
+  function resetFilters() {
+    state.cat = "all"; state.q = ""; state.budgetOnly = false; $("q").value = "";
+    $("searchBox").classList.remove("has"); render();
+  }
+
+  // ── загрузка ──
+  async function load() {
+    if (state.loading) return;
+    state.loading = true; state.error = false; renderStatus(); if (!state.orders.length) renderList();
+    try {
+      const r = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      state.orders = (data.orders || []).filter((o) => o && o.key && o.title);
+      state.updated = data.updated; state.sources = data.sources || [];
+    } catch (e) {
+      state.error = true;
+      if (state.orders.length) $("status").textContent = "Нет связи, показываю последние загруженные заказы";
+    }
+    state.loading = false;
+    render();
+  }
+
+  // ── события ──
+  $("refresh").addEventListener("click", () => { haptic("light"); load(); });
+  let t;
+  $("q").addEventListener("input", (e) => {
+    $("searchBox").classList.toggle("has", !!e.target.value);
+    clearTimeout(t); t = setTimeout(() => { state.q = e.target.value; state.open = null; renderList(); }, 120);
+  });
+  $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+  $("clear").addEventListener("click", (e) => { e.preventDefault(); $("q").value = ""; state.q = ""; $("searchBox").classList.remove("has"); renderList(); $("q").focus(); });
+  document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+    state.sort = b.dataset.sort; haptic("select"); render();
+  }));
+  $("budgetOnly").addEventListener("click", () => { state.budgetOnly = !state.budgetOnly; haptic("select"); render(); });
+  setInterval(() => { if (!document.hidden) load(); }, 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+
+  // ── старт ──
+  (async () => {
+    const [fav, hidden, last] = await Promise.all([store.get("fav"), store.get("hidden"), store.get("lastVisit")]);
+    try { state.fav = new Set(JSON.parse(fav || "[]")); } catch (e) {}
+    try { state.hidden = new Set(JSON.parse(hidden || "[]")); } catch (e) {}
+    state.lastVisit = Number(last) || 0;
+    render();
+    await load();
+    store.set("lastVisit", String(Date.now()));
+  })();
+})();
+</script>
+</body>
+</html>
