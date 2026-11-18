@@ -6,7 +6,7 @@ on:
   workflow_dispatch:          # кнопка «Run workflow» для ручного запуска
 
 permissions:
-  contents: write             # чтобы сохранять seen.json (какие заказы уже отправлены)
+  contents: write             # чтобы сохранять orders.json и seen.json
 
 concurrency:
   group: orders-radar
@@ -15,7 +15,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
 
@@ -25,9 +25,9 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
 
-      - name: Запомнить отправленные
+      - name: Сохранить ленту
         run: |
           git config user.name "zakaz-radar"
           git config user.email "zakaz-radar@users.noreply.github.com"
-          git add seen.json
-          git diff --cached --quiet || (git commit -m "seen [skip ci]" && git pull --rebase && git push)
+          git add seen.json orders.json
+          git diff --cached --quiet || (git commit -m "orders [skip ci]" && git pull --rebase && git push)
