@@ -284,21 +284,40 @@ def first_line(s, limit=140):
 
 
 USERNAME_RE = re.compile(r"(?<![\w/])@([A-Za-z][A-Za-z0-9_]{3,31})\b")
-TME_RE = re.compile(r"^https?://(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{3,31})/?$", re.I)
+TME_RE = re.compile(r"^https?://(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{3,31})/?(\?\S*)?$", re.I)
 
 
 def find_contact(text, links, channel):
-    """Кому писать: сначала живой человек, потом бот."""
-    names = [m.group(1) for m in (TME_RE.match(h.strip()) for h in links) if m]
-    names += USERNAME_RE.findall(text)
-    skip = {channel.lower(), "joinchat", "share", "addstickers", "proxy", "s"}
+    """Кому писать: сначала живой человек, потом бот (в т.ч. ссылка вида bot?start=…)."""
+    found = []
+    for h in links:
+        m = TME_RE.match(h.strip())
+        if m:
+            found.append((m.group(1), h.strip()))
+    found += [(n, f"https://t.me/{n}") for n in USERNAME_RE.findall(text)]
+    skip = {channel.lower(), "joinchat", "share", "addstickers", "proxy", "s", "addlist", "boost"}
     people, bots = [], []
-    for n in names:
-        if n.lower() in skip:
+    for name, url in found:
+        if name.lower() in skip:
             continue
-        (bots if n.lower().endswith("bot") else people).append(n)
-    best = (people or bots or [None])[0]
-    return f"https://t.me/{best}" if best else None
+        (bots if name.lower().endswith("bot") else people).append(url)
+    return (people or bots or [None])[0]
+
+
+HASHTAG_LINE_RE = re.compile(r"^(\s*#[\w-]+[,.;]?)+\s*$")
+
+
+def strip_service_lines(text, ignore_rx):
+    """Убирает служебные строки каналов: подписи вида «Контакт заказчика — в боте»
+    и строки из одних хэштегов, чтобы они не влияли на поиск слов."""
+    keep = []
+    for line in text.split("\n"):
+        if HASHTAG_LINE_RE.match(line):
+            continue
+        if ignore_rx and ignore_rx.search(line.lower()):
+            continue
+        keep.append(line)
+    return clean_text("\n".join(keep))
 
 
 MONEY_RE = re.compile(
@@ -480,7 +499,7 @@ def collect(cfg):
 
     for ch in cfg.get("telegram_channels", []):
         run("@" + ch.lstrip("@"), lambda ch=ch: get_tg_channel(ch))
-    if cfg.get("kwork", {}).get("enabled", True):
+    if cfg.get("kwork", {}).get("enabled", False):
         run("Kwork", lambda: get_kwork(cfg.get("kwork", {})))
     for feed in cfg.get("rss_feeds", []):
         run(feed.get("name", feed["url"]), lambda feed=feed: get_rss(feed))
@@ -503,6 +522,7 @@ def run_once(cfg, dry=False):
     want = build_matcher(cfg.get("keywords", []))
     stop = build_matcher(cfg.get("stop_words", []))
     title_stop = build_matcher(cfg.get("title_stop_words", []))
+    ignore_lines = build_matcher(cfg.get("ignore_lines", []))
     max_age = timedelta(days=cfg.get("max_age_days", 10))
     now = now_utc()
 
@@ -519,6 +539,9 @@ def run_once(cfg, dry=False):
 
     fresh = []
     for o in collected:
+        o["text"] = strip_service_lines(o["text"], ignore_lines)
+        if not o["text"] and not o["title"]:
+            continue
         if o.get("budget") is None:
             o["budget"] = parse_money(o["title"] + "\n" + o["text"][:600])
         date = parse_iso(o.get("date"))
@@ -545,8 +568,10 @@ def run_once(cfg, dry=False):
     # архив для мини-аппа: только свежие, новые сверху
     def sort_key(o):
         return o.get("date") or o.get("found") or ""
+    active = {r["name"] for r in report}
     archive = [o for o in by_key.values()
                if now - (parse_iso(o.get("date") or o.get("found")) or now) <= max_age
+               and o.get("source") in active
                and is_relevant(o, want, stop, title_stop)]
     archive.sort(key=sort_key, reverse=True)
     archive = archive[:cfg.get("archive_size", 400)]
