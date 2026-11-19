@@ -1,0 +1,21 @@
+name: Настроить бота для всех
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Кнопка «Заказы» и описание для всех пользователей
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: |
+          api="https://api.telegram.org/bot$TOKEN"
+          post() { curl -sS -X POST "$api/$1" -H 'Content-Type: application/json' -d "$2" | grep -o '"ok":[a-z]*\|"description":"[^"]*"'; }
+          echo "Кнопка меню:"
+          post setChatMenuButton '{"menu_button":{"type":"web_app","text":"Заказы","web_app":{"url":"https://fredijj228.github.io/zakaz-radar/"}}}'
+          echo "Описание:"
+          post setMyDescription '{"description":"📡 Радар заказов для фрилансеров: Telegram-боты, mini apps, сайты и парсеры с бирж и Telegram-каналов.\n\nНажми кнопку «Заказы» слева от поля ввода — откроется лента свежих заказов с бюджетами, фильтрами и поиском.\n\nby Artemiy Romanchenko"}'
+          echo "Короткое описание:"
+          post setMyShortDescription '{"short_description":"Свежие заказы на ботов, mini apps и сайты. Открывай кнопкой «Заказы». by Artemiy Romanchenko"}'
